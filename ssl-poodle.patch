@@ -1,0 +1,90 @@
+--- a/debian/changelog	2014-03-13 02:13:29.000000000 +0000
++++ b/debian/changelog	2014-12-17 00:01:59.000000000 +0000
+@@ -1,2 +1,8 @@
++lighttpd (1.4.28-2+squeeze1.6.1) oldstable-security; urgency=high
++
++  * Fix cve-2014-3566: backport ssl.use-sslv3 config
++
++ -- Mat Johns <debian@mat.johns.am>  Wed, 17 Dec 2014 00:00:00 +0000
++
+ lighttpd (1.4.28-2+squeeze1.6) oldstable-security; urgency=high
+
+--- a/src/base.h	2010-08-07 13:44:17.000000000 +0100
++++ b/src/base.h	2014-12-16 23:37:36.000000000 +0000
+@@ -277,6 +277,7 @@
+ 	buffer *ssl_cipher_list;
+ 	unsigned short ssl_honor_cipher_order; /* determine SSL cipher in server-preferred order, not client-order */
+ 	unsigned short ssl_use_sslv2;
++	unsigned short ssl_use_sslv3;
+ 	unsigned short ssl_verifyclient;
+ 	unsigned short ssl_verifyclient_enforce;
+ 	unsigned short ssl_verifyclient_depth;
+@@ -535,6 +536,7 @@
+ 	buffer *ssl_ca_file;
+ 	buffer *ssl_cipher_list;
+ 	unsigned short ssl_use_sslv2;
++	unsigned short ssl_use_sslv3;
+ 	unsigned short use_ipv6;
+ 	unsigned short is_ssl;
+ 
+--- a/src/configfile.c	2010-08-17 10:04:38.000000000 +0100
++++ b/src/configfile.c	2014-12-16 23:43:07.000000000 +0000
+@@ -104,6 +104,7 @@
+ 		{ "server.set-v6only",           NULL, T_CONFIG_BOOLEAN, T_CONFIG_SCOPE_CONNECTION }, /* 61 */
+ 		{ "ssl.honor-cipher-order",      NULL, T_CONFIG_BOOLEAN, T_CONFIG_SCOPE_SERVER},      /* 62 */
+ 		{ "ssl.disable-client-renegotiation", NULL, T_CONFIG_BOOLEAN, T_CONFIG_SCOPE_SERVER },/* 63 */
++		{ "ssl.use-sslv3",               NULL, T_CONFIG_BOOLEAN, T_CONFIG_SCOPE_SERVER },     /* 64 */
+ 
+ 		{ "server.host",                 "use server.bind instead", T_CONFIG_DEPRECATED, T_CONFIG_SCOPE_UNSET },
+ 		{ "server.docroot",              "use server.document-root instead", T_CONFIG_DEPRECATED, T_CONFIG_SCOPE_UNSET },
+@@ -175,6 +176,7 @@
+ 		s->is_ssl        = 0;
+ 		s->ssl_honor_cipher_order = 1;
+ 		s->ssl_use_sslv2 = 0;
++		s->ssl_use_sslv3 = 1;
+ 		s->use_ipv6      = 0;
+ 		s->set_v6only    = 1;
+ 		s->defer_accept  = 0;
+@@ -240,6 +242,7 @@
+ 
+ 		cv[47].destination = s->ssl_cipher_list;
+ 		cv[48].destination = &(s->ssl_use_sslv2);
++		cv[64].destination = &(s->ssl_use_sslv3);
+ 		cv[49].destination = &(s->etag_use_inode);
+ 		cv[50].destination = &(s->etag_use_mtime);
+ 		cv[51].destination = &(s->etag_use_size);
+@@ -336,6 +339,7 @@
+ 	PATCH(ssl_cipher_list);
+ 	PATCH(ssl_honor_cipher_order);
+ 	PATCH(ssl_use_sslv2);
++	PATCH(ssl_use_sslv3);
+ 	PATCH(etag_use_inode);
+ 	PATCH(etag_use_mtime);
+ 	PATCH(etag_use_size);
+@@ -408,6 +412,8 @@
+ 				PATCH(ssl_honor_cipher_order);
+ 			} else if (buffer_is_equal_string(du->key, CONST_STR_LEN("ssl.use-sslv2"))) {
+ 				PATCH(ssl_use_sslv2);
++			} else if (buffer_is_equal_string(du->key, CONST_STR_LEN("ssl.use-sslv3"))) {
++				PATCH(ssl_use_sslv3);
+ 			} else if (buffer_is_equal_string(du->key, CONST_STR_LEN("ssl.cipher-list"))) {
+ 				PATCH(ssl_cipher_list);
+ 			} else if (buffer_is_equal_string(du->key, CONST_STR_LEN("ssl.engine"))) {
+--- a/src/network.c	2010-08-17 10:04:38.000000000 +0100
++++ b/src/network.c	2014-12-16 23:37:36.000000000 +0000
+@@ -706,6 +706,15 @@
+ 		/* Debian: disable ssl compression to mitigate CRIME attack. */
+ 		sk_SSL_COMP_zero(SSL_COMP_get_compression_methods());
+ 
++		if (!s->ssl_use_sslv3) {
++			/* disable SSLv3 */
++			if (!(SSL_OP_NO_SSLv3 & SSL_CTX_set_options(s->ssl_ctx, SSL_OP_NO_SSLv3))) {
++				log_error_write(srv, __FILE__, __LINE__, "ss", "SSL:",
++						ERR_error_string(ERR_get_error(), NULL));
++				return -1;
++			}
++		}
++
+ 		if (!buffer_is_empty(s->ssl_cipher_list)) {
+ 			/* Disable support for low encryption ciphers */
+ 			if (SSL_CTX_set_cipher_list(s->ssl_ctx, s->ssl_cipher_list->ptr) != 1) {
