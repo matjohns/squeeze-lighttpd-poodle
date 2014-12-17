@@ -1,0 +1,52 @@
+--- a/debian/changelog	2014-03-13 02:13:29.000000000 +0000
++++ b/debian/changelog	2014-12-17 00:23:15.000000000 +0000
+@@ -1,3 +1,9 @@
++lighttpd (1.4.28-2+squeeze1.6.2) oldstable-security; urgency=high
++
++  * Fix cve-2014-3566: force SSLv3 off
++
++ -- Mat Johns <debian@mat.johns.am>  Wed, 17 Dec 2014 03:00:00 +0000
++
+ lighttpd (1.4.28-2+squeeze1.6) oldstable-security; urgency=high
+ 
+   * Non-maintainer upload by the Security Team.
+--- a/src/base.h	2014-12-17 00:10:58.000000000 +0000
++++ b/src/base.h	2014-12-17 02:53:24.000000000 +0000
+@@ -279,2 +279,3 @@
+ 	unsigned short ssl_use_sslv2;
++	unsigned short ssl_use_sslv3;
+ 	unsigned short ssl_verifyclient;
+@@ -535,6 +535,7 @@
+ 	buffer *ssl_ca_file;
+ 	buffer *ssl_cipher_list;
+ 	unsigned short ssl_use_sslv2;
++	unsigned short ssl_use_sslv3;
+ 	unsigned short use_ipv6;
+ 	unsigned short is_ssl;
+ 
+--- a/src/configfile.c	2014-12-17 00:10:58.000000000 +0000
++++ b/src/configfile.c	2014-12-17 02:52:32.000000000 +0000
+@@ -177,4 +177,5 @@
+ 		s->ssl_use_sslv2 = 0;
++		s->ssl_use_sslv3 = 0;
+ 		s->use_ipv6      = 0;
+ 		s->set_v6only    = 1;
+ 		s->defer_accept  = 0;
+--- a/src/network.c	2010-08-17 10:04:38.000000000 +0100
++++ b/src/network.c	2014-12-16 23:37:36.000000000 +0000
+@@ -694,6 +694,15 @@
+ 		SSL_CTX_set_options(s->ssl_ctx, ssloptions);
+ 		SSL_CTX_set_info_callback(s->ssl_ctx, ssl_info_callback);
+ 
++		if (!s->ssl_use_sslv3) {
++			/* disable SSLv3 */
++			if (!(SSL_OP_NO_SSLv3 & SSL_CTX_set_options(s->ssl_ctx, SSL_OP_NO_SSLv3))) {
++				log_error_write(srv, __FILE__, __LINE__, "ss", "SSL:",
++						ERR_error_string(ERR_get_error(), NULL));
++				return -1;
++			}
++		}
++
+ 		if (!s->ssl_use_sslv2) {
+ 			/* disable SSLv2 */
+ 			if (!(SSL_OP_NO_SSLv2 & SSL_CTX_set_options(s->ssl_ctx, SSL_OP_NO_SSLv2))) {
